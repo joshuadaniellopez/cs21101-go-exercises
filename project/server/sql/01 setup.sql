@@ -34,8 +34,8 @@ create table LineItem (
 	amount float not null,
 	bucket int,
 	bank int,
-	owner int not null,
+	ownerid int not null,
 	constraint itemowner
-		foreign key (owner)
+		foreign key (ownerid)
 			references UserAccount(id)
 );

@@ -37,7 +37,7 @@ type LineItem struct {
 	Amount      float64 `json:"amount" bson:"amount"`
 	Bucket      int     `json:"bucket" bson:"bucket"`
 	Bank        int     `json:"bank" bson:"bank"`
-	Owner       int     `json:"owner" bson:"pwner"`
+	Owner       int     `json:"ownerid" bson:"ownerid"`
 }
 
 const (
@@ -172,6 +172,7 @@ func userProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 func userProcessId(id int, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	switch r.Method {
 	case "GET":
 		db := db_init()
@@ -196,6 +197,11 @@ func userProcessId(id int, w http.ResponseWriter, r *http.Request) {
 				Pin:      pin,
 			})
 		}
+		if users == nil || len(users) < 1 {
+			http.Error(w, "Not Found!", http.StatusNotFound)
+			return
+		}
+
 		if err := json.NewEncoder(w).Encode(users); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -221,6 +227,8 @@ func userProcessId(id int, w http.ResponseWriter, r *http.Request) {
 			user.Pin,
 			id,
 		).Scan(&updatedId)
+
+		user.Id = id
 
 		checkError(err)
 
@@ -316,6 +324,7 @@ func bankProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 func bankProcessId(id int, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	switch r.Method {
 	case "GET":
 		db := db_init()
@@ -339,6 +348,11 @@ func bankProcessId(id int, w http.ResponseWriter, r *http.Request) {
 				Owner: ownerid,
 			})
 		}
+		if banks == nil || len(banks) < 1 {
+			http.Error(w, "Not Found!", http.StatusNotFound)
+			return
+		}
+
 		if err := json.NewEncoder(w).Encode(banks); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -364,6 +378,8 @@ func bankProcessId(id int, w http.ResponseWriter, r *http.Request) {
 		).Scan(&updatedId)
 
 		checkError(err)
+
+		bank.Id = id
 
 		if err := json.NewEncoder(w).Encode(bank); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -393,13 +409,38 @@ func bankProcessId(id int, w http.ResponseWriter, r *http.Request) {
 }
 
 func bucketProcess(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	switch r.Method {
 	case "POST":
+		db := db_init()
+		defer db.Close()
+
+		var bucket Bucket
+		if err := json.NewDecoder(r.Body).Decode(&bucket); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var newBucketId int
+		err := db.QueryRow(
+			"INSERT INTO public.bucket (\"name\", ownerid) VALUES($1, $2) RETURNING id;",
+			bucket.Name,
+			bucket.Owner,
+		).Scan(&newBucketId)
+
+		checkError(err)
+
+		bucket.Id = newBucketId
+
+		if err := json.NewEncoder(w).Encode(bucket); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	case "GET":
 		db := db_init()
 		defer db.Close()
 
-		rows, err := db.Query("SELECT id, \"name\" FROM public.bucket;")
+		rows, err := db.Query("SELECT id, \"name\", ownerid FROM public.bucket;")
 
 		checkError(err)
 
@@ -431,47 +472,153 @@ func bucketProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 func bucketProcessId(id int, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	switch r.Method {
-	case "GET":
-	case "POST":
-		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
-		return
-	case "PUT":
-	case "DELETE":
-	}
-}
-
-func lineitemProcess(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case "POST":
 	case "GET":
 		db := db_init()
 		defer db.Close()
 
-		rows, err := db.Query("SELECT id, title, description, amount, bucket, bank, \"owner\" FROM public.lineitem;")
+		rows, err := db.Query("SELECT id, \"name\", ownerid FROM public.bucket WHERE id=$1;", id)
 
 		checkError(err)
 
-		var lineitem []LineItem
+		var buckets []Bucket
 		for rows.Next() {
-			var id, bucket, bank, owner int
+			var id, ownerid int
+			var name string
+
+			err = rows.Scan(&id, &name, &ownerid)
+			checkError(err)
+
+			buckets = append(buckets, Bucket{
+				Id:    id,
+				Name:  name,
+				Owner: ownerid,
+			})
+		}
+
+		if buckets == nil || len(buckets) < 1 {
+			http.Error(w, "Not Found!", http.StatusNotFound)
+			return
+		}
+
+		if err := json.NewEncoder(w).Encode(buckets); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	case "POST":
+		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		return
+	case "PUT":
+		db := db_init()
+		defer db.Close()
+
+		var bucket Bucket
+		if err := json.NewDecoder(r.Body).Decode(&bucket); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var updatedId int
+		err := db.QueryRow(
+			"UPDATE public.bucket SET \"name\"=$1 WHERE id=$2 RETURNING id;",
+			bucket.Name,
+			id,
+		).Scan(&updatedId)
+
+		checkError(err)
+
+		bucket.Id = id
+
+		if err := json.NewEncoder(w).Encode(bucket); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	case "DELETE":
+		db := db_init()
+		defer db.Close()
+
+		var bucket Bucket
+		err := db.QueryRow("DELETE FROM public.bucket where id = $1 RETURNING id,\"name\", ownerid;", id).Scan(
+			&bucket.Id,
+			&bucket.Name,
+			&bucket.Owner,
+		)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := json.NewEncoder(w).Encode(bucket); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+func lineitemProcess(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	switch r.Method {
+	case "POST":
+		db := db_init()
+		defer db.Close()
+
+		var lineitem LineItem
+		if err := json.NewDecoder(r.Body).Decode(&lineitem); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var newLineItemId int
+		err := db.QueryRow(
+			"INSERT INTO public.lineitem (title, description, amount, bucket, bank, ownerid) VALUES($1, $2, $3, $4, $5, $6) RETURNING id;",
+			lineitem.Title,
+			lineitem.Description,
+			lineitem.Amount,
+			lineitem.Bucket,
+			lineitem.Bank,
+			lineitem.Owner,
+		).Scan(&newLineItemId)
+
+		checkError(err)
+
+		lineitem.Id = newLineItemId
+
+		if err := json.NewEncoder(w).Encode(lineitem); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+	case "GET":
+		db := db_init()
+		defer db.Close()
+
+		rows, err := db.Query("SELECT id, title, description, amount, bucket, bank, ownerid FROM public.lineitem;")
+
+		checkError(err)
+
+		var lineitems []LineItem
+		for rows.Next() {
+			var id, bucket, bank, ownerid int
 			var title, description string
 			var amount float64
 
-			err = rows.Scan(&id, &title, &description, &amount, &bucket, &bank, &owner)
+			err = rows.Scan(&id, &title, &description, &amount, &bucket, &bank, &ownerid)
 			checkError(err)
 
-			lineitem = append(lineitem, LineItem{
+			lineitems = append(lineitems, LineItem{
 				Id:          id,
 				Title:       title,
 				Description: description,
 				Amount:      amount,
 				Bucket:      bucket,
 				Bank:        bank,
-				Owner:       owner,
+				Owner:       ownerid,
 			})
 		}
-		if err := json.NewEncoder(w).Encode(lineitem); err != nil {
+
+		if err := json.NewEncoder(w).Encode(lineitems); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -485,12 +632,99 @@ func lineitemProcess(w http.ResponseWriter, r *http.Request) {
 }
 
 func lineitemProcessId(id int, w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	switch r.Method {
 	case "GET":
+		db := db_init()
+		defer db.Close()
+
+		rows, err := db.Query("SELECT id, title, description, amount, bucket, bank, ownerid FROM public.lineitem WHERE id=$1;", id)
+
+		checkError(err)
+
+		var lineitems []LineItem
+		for rows.Next() {
+			var id, bucket, bank, ownerid int
+			var amount float64
+			var title, description string
+
+			err = rows.Scan(&id, &title, &description, &amount, &bucket, &bank, &ownerid)
+			checkError(err)
+
+			lineitems = append(lineitems, LineItem{
+				Id:          id,
+				Title:       title,
+				Description: description,
+				Amount:      amount,
+				Bucket:      bucket,
+				Bank:        bank,
+				Owner:       ownerid,
+			})
+		}
+
+		if lineitems == nil || len(lineitems) < 1 {
+			http.Error(w, "Not Found!", http.StatusNotFound)
+			return
+		}
+
+		if err := json.NewEncoder(w).Encode(lineitems); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	case "POST":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
 		return
 	case "PUT":
+		db := db_init()
+		defer db.Close()
+
+		var lineitem LineItem
+		if err := json.NewDecoder(r.Body).Decode(&lineitem); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		var updatedId int
+		err := db.QueryRow(
+			"UPDATE public.lineitem SET title=$1, description=$2, amount=$3, bucket=$4, bank=$5 WHERE id=$6 RETURNING id;",
+			lineitem.Title,
+			lineitem.Description,
+			lineitem.Amount,
+			lineitem.Bucket,
+			lineitem.Bank,
+			id,
+		).Scan(&updatedId)
+
+		checkError(err)
+		lineitem.Id = id
+
+		if err := json.NewEncoder(w).Encode(lineitem); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	case "DELETE":
+		db := db_init()
+		defer db.Close()
+
+		var lineitem LineItem
+		err := db.QueryRow("DELETE FROM public.lineitem where id = $1 RETURNING id, title, description, amount, bucket, bank, ownerid;", id).Scan(
+			&lineitem.Id,
+			&lineitem.Title,
+			&lineitem.Description,
+			&lineitem.Amount,
+			&lineitem.Bucket,
+			&lineitem.Bank,
+			&lineitem.Owner,
+		)
+
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := json.NewEncoder(w).Encode(lineitem); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 }
