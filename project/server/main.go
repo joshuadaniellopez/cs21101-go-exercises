@@ -80,6 +80,8 @@ func handler() http.HandlerFunc {
 			bucketProcess(w, r)
 		} else if r.URL.Path == "/lineitems" {
 			lineitemProcess(w, r)
+		} else if r.URL.Path == "/authorize" {
+			authorize(w, r)
 		} else if n, _ := fmt.Sscanf(r.URL.Path, "/user/%d", &id); n == 1 {
 			userProcessId(id, w, r)
 		} else if n, _ := fmt.Sscanf(r.URL.Path, "/bank/%d", &id); n == 1 {
@@ -726,5 +728,54 @@ func lineitemProcessId(id int, w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+	}
+}
+
+type Login struct {
+	Username string `json:"username"`
+	Pin      int    `json:"pin"`
+}
+
+func authorize(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case "POST":
+		db := db_init()
+		defer db.Close()
+
+		var login Login
+
+		if err := json.NewDecoder(r.Body).Decode(&login); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var users []UserAccount
+
+		rows, err := db.Query("SELECT id, username, \"name\", pin FROM public.useraccount WHERE username=$1 and pin=$2 LIMIT 1;", login.Username, login.Pin)
+		checkError(err)
+
+		for rows.Next() {
+			var id, pin int
+			var username, name string
+
+			err = rows.Scan(&id, &username, &name, &pin)
+			checkError(err)
+
+			users = append(users, UserAccount{
+				Id:       id,
+				Username: username,
+				Name:     name,
+				Pin:      pin,
+			})
+		}
+
+		if err := json.NewEncoder(w).Encode(users[0]); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	default:
+		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		return
 	}
 }
