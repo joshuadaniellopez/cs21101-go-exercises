@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   db:
-    container_name: dktwin01_postgres
+    container_name: golangproject_postgres
     image: postgres
     restart: always
     environment:
