@@ -13,6 +13,8 @@ import (
 
 const ROOT_URL = "http://localhost:9000"
 
+// Data Models - same with server
+// User Account, Bank Account, Bucket, and Line Item
 type UserAccount struct {
 	Id       int    `json:"id" bson:"id"`
 	Username string `json:"username" bson:"username"`
@@ -43,65 +45,106 @@ type LineItem struct {
 }
 
 func main() {
-
-	welcome()
-
-	var username string
-	var pin int
-
-	authorized := false
-
-	// Input user username
-	fmt.Print("Enter your username: ")
-	fmt.Scanf("%s", &username)
-
-	fmt.Print("Enter your PIN: ")
-	fmt.Scanf("%d", &pin)
-
-	authorized = authorize(username, pin)
-
-	if !authorized {
-		unauthorizedDetected()
-		authorized = false
-	}
-
-	var authorizedUser UserAccount
-	authorizedUser = getUser(username, pin)
-	fmt.Println(authorizedUser)
-
-	var banks []BankAccount
-	var buckets []Bucket
-	var lineitems []LineItem
-
-	banks = getBanks(authorizedUser.Id)
-	buckets = getBuckets(authorizedUser.Id)
-	lineitems = getLineItems(authorizedUser.Id)
-
+	// Client runs forever, until EOF
 	for {
-		fmt.Println("-----------------------")
-		process(authorizedUser.Id, &banks, &buckets, &lineitems)
-		fmt.Println("-----------------------")
+		welcome()
+
+		var username string
+		var name string
+		var pin int
+
+		// Ask user if want to create account
+		// If yes, ask for User Account Properties
+		var createAccount string
+		fmt.Print("Would you like to create an account? (Y/N) ")
+		fmt.Scan(&createAccount)
+
+		if createAccount == "Y" {
+			scanner := bufio.NewScanner(os.Stdin)
+
+			fmt.Print("What's your name: ")
+			if scanner.Scan() {
+				name = scanner.Text()
+			}
+
+			fmt.Print("What's your desired name: ")
+			if scanner.Scan() {
+				username = scanner.Text()
+			}
+
+			fmt.Print("What's your desired pin: ")
+			fmt.Scan(&pin)
+
+			success := createUser(username, name, pin)
+			if success {
+				fmt.Println("User Account Created!")
+				continue
+			} else {
+				fmt.Println("Invalid Request! Make sure to use an unused username and valid PIN.")
+			}
+		}
+
+		authorized := false
+
+		// Authorization: Check if valid user account
+		fmt.Print("Enter your username: ")
+		fmt.Scanf("%s", &username)
+
+		fmt.Print("Enter your PIN: ")
+		fmt.Scanf("%d", &pin)
+
+		authorized = authorize(username, pin)
+
+		if !authorized {
+			unauthorizedDetected()
+			authorized = false
+			continue
+		}
+
+		authorizedUser := getUser(username, pin)
+		fmt.Println(authorizedUser)
+
+		var banks []BankAccount
+		var buckets []Bucket
+		var lineitems []LineItem
+
+		// Retrieve all data related to user
+		banks = getBanks(authorizedUser.Id)
+		buckets = getBuckets(authorizedUser.Id)
+		lineitems = getLineItems(authorizedUser.Id)
+
+		// Run function for supported CRUD processes
+		for {
+			fmt.Println("-----------------------")
+			process(authorizedUser.Id, &banks, &buckets, &lineitems)
+			fmt.Println("-----------------------")
+		}
 	}
 
 }
 
+// Print Welcome Message
 func welcome() {
 	fmt.Println("-----------------------")
 	fmt.Println("Welcome to Monefy	")
 	fmt.Println("-----------------------")
 }
 
+// Print Unauthorized Message
 func unauthorizedDetected() {
 	fmt.Println("---------------------------")
 	fmt.Println("Unauthorized. Try Again	")
 	fmt.Println("---------------------------")
 }
 
+// Fire request to /authorize endpoint with user payload
+// Returns boolean (true for success, false otherwise)
 func authorize(username string, pin int) bool {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	body := fmt.Sprintf("{\"username\": \"%s\", \"pin\": %d}", username, pin)
 	payload := bytes.NewBuffer([]byte(body))
 
+	// Fire request to /authorize endpoint with user payload
 	response, err := client.Post(ROOT_URL+"/authorize", "application/json", payload)
 	if err != nil {
 		log.Fatal(err)
@@ -112,9 +155,12 @@ func authorize(username string, pin int) bool {
 		log.Fatal(err)
 	}
 
+	// if failed, return unsuccessful (false), else true
 	return response.StatusCode < 400
 }
 
+// Fire request to /authorize endpoint with user payload
+// Returns UserAccount object
 func getUser(username string, pin int) UserAccount {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	body := fmt.Sprintf("{\"username\": \"%s\", \"pin\": %d}", username, pin)
@@ -136,6 +182,8 @@ func getUser(username string, pin int) UserAccount {
 	return user
 }
 
+// Process Function
+// Hosts all supported operations [Create, Read, Update, Delete]
 func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineItem) {
 
 	entities := []string{"BANK", "BUCKET", "LINEITEM"}
@@ -147,6 +195,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 		fmt.Println(methods)
 		fmt.Scan(&method)
 
+		// Check if valid operation, if not - retry
 		validMethod := false
 		for i := 0; i < len(methods); i++ {
 			if method == methods[i] {
@@ -166,6 +215,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 		fmt.Println(entities)
 		fmt.Scan(&entity)
 
+		// Check if valid resource, if not - retry
 		validEntity := false
 		for i := 0; i < len(entities); i++ {
 			if entity == entities[i] {
@@ -182,7 +232,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 	switch method {
 	case "CREATE":
 		switch entity {
-		case "BANK":
+		case "BANK": // Operation for creating bank account
 			var name string
 			fmt.Print("Creating Bank. \nName: ")
 			fmt.Scan(&name)
@@ -198,7 +248,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 			} else {
 				fmt.Println("Unexpected error occured. Try again!")
 			}
-		case "BUCKET":
+		case "BUCKET": // Operation for creating bucket
 			var name string
 			fmt.Print("Creating Bucket. \nName: ")
 			fmt.Scan(&name)
@@ -214,7 +264,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 			} else {
 				fmt.Println("Unexpected error occured. Try again!")
 			}
-		case "LINEITEM":
+		case "LINEITEM": // Operation for creating line item/expense entry
 			var title, description string
 			var amount float64
 			var bucket, bank int
@@ -234,6 +284,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 			fmt.Print("Amount: ")
 			fmt.Scan(&amount)
 
+			// User can map line item entry to bucket
 			for {
 				fmt.Print("Available Buckets: ")
 				fmt.Println(*buckets)
@@ -255,6 +306,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 				}
 			}
 
+			// User can map line item entry to bank
 			for {
 				fmt.Print("Available Banks: ")
 				fmt.Println(*banks)
@@ -289,23 +341,113 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 		}
 	case "VIEW":
 		switch entity {
-		case "BANK":
+		case "BANK": // Operation for retrieving bank records
 			fmt.Println("Your current banks: [Bank Id, Bank Name, Your ID]")
 			*banks = getBanks(id)
 			fmt.Println(*banks)
-		case "BUCKET":
+		case "BUCKET": // Operation for retrieving bucket records
 			fmt.Println("Your current buckets: [Bucket Id, Bucket Name, Your ID]")
 			*buckets = getBuckets(id)
 			fmt.Println(*buckets)
-		case "LINEITEM":
+		case "LINEITEM": // Operation for retrieving line item/expense entries
 			fmt.Println("Your current items: [Line Item Id, Name, Description, Amount, Bucket, Bank, Your ID]")
 			*lineitems = getLineItems(id)
 			fmt.Println(*lineitems)
 		}
 	case "UPDATE":
+		switch entity {
+		case "BANK": // Operation for updating bank records
+			fmt.Println("Your current banks: [Bank Id, Bank Name, Your ID]")
+			*banks = getBanks(id)
+			fmt.Println(*banks)
+
+			var bankId int
+			var bank BankAccount
+
+			fmt.Print("Enter the Bank Id for update: ")
+			fmt.Scan(&bankId)
+
+			for _, val := range *banks {
+				if val.Id == bankId {
+					bank = val
+					break
+				} else {
+					fmt.Println("Invalid ID. Try again.")
+				}
+			}
+
+			var bankName string
+			fmt.Printf("Your Bank Name is %s, change to: \n", bank.Name)
+
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				bankName = scanner.Text()
+			}
+
+			fmt.Println(bankId)
+			fmt.Println(bankName)
+
+			success := false
+			success = updateBank(bankId, bankName, id)
+
+			if success {
+				fmt.Println("Bank updated!")
+				fmt.Println("[Bank Id, Bank Name, Bank Owner Id]")
+				fmt.Println("Your Banks: ")
+				*banks = getBanks(id)
+				fmt.Println(*banks)
+			} else {
+				fmt.Println("Unexpected error occured. Try again!")
+			}
+
+		case "BUCKET": // Operation for updating bucket records
+			fmt.Println("Your current buckets: [Bucket Id, Bucket Name, Your ID]")
+			*buckets = getBuckets(id)
+			fmt.Println(*buckets)
+
+			var bucketId int
+			var bucket Bucket
+
+			fmt.Print("Enter the Bucket Id for update: ")
+			fmt.Scan(&bucketId)
+
+			for _, val := range *buckets {
+				if val.Id == bucketId {
+					bucket = val
+					break
+				} else {
+					fmt.Println("Invalid ID. Try again.")
+				}
+			}
+
+			var bucketName string
+			fmt.Printf("Your Bucket Name is %s, change to: \n", bucket.Name)
+
+			scanner := bufio.NewScanner(os.Stdin)
+			if scanner.Scan() {
+				bucketName = scanner.Text()
+			}
+
+			success := false
+			success = updateBucket(bucketId, bucketName, id)
+
+			if success {
+				fmt.Println("Bucket updated!")
+				fmt.Println("[Bucket Id, Bucket Name, Your ID]")
+				fmt.Println("Your Buckets: ")
+				*buckets = getBuckets(id)
+				fmt.Println(*buckets)
+			} else {
+				fmt.Println("Unexpected error occured. Try again!")
+			}
+
+		case "LINEITEM": // Updating Line Item will not be supported. Suggest to do DELETE then ADD
+			fmt.Println("Not supported! Please perform delete then add operation instead.")
+			fmt.Println("Returning to main menu...")
+		}
 	case "DELETE":
 		switch entity {
-		case "BANK":
+		case "BANK": // Operation for deleting bank record
 			fmt.Println("Your current banks: [Bank Id, Bank Name, Your ID]")
 			*banks = getBanks(id)
 			fmt.Println(*banks)
@@ -326,7 +468,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 				fmt.Println("Unexpected error occured. Try again!")
 			}
 
-		case "BUCKET":
+		case "BUCKET": // Operation for deleting bucket record
 			fmt.Println("Your current buckets: [Bucket Id, Bucket Name, Your ID]")
 			*buckets = getBuckets(id)
 			fmt.Println(*buckets)
@@ -347,7 +489,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 				fmt.Println("Unexpected error occured. Try again!")
 			}
 
-		case "LINEITEM":
+		case "LINEITEM": // Operation for deleting line item/expense entry
 			fmt.Println("Your current items: [Line Item Id, Name, Description, Amount, Bucket, Bank, Your ID]")
 			*lineitems = getLineItems(id)
 			fmt.Println(*lineitems)
@@ -371,6 +513,7 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 	}
 }
 
+// Get Bank Records from Server HTTP API
 func getBanks(ownerid int) []BankAccount {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	response, err := client.Get(ROOT_URL + "/banks")
@@ -394,6 +537,7 @@ func getBanks(ownerid int) []BankAccount {
 	return filtered
 }
 
+// Get Bucket Records from Server HTTP API
 func getBuckets(ownerid int) []Bucket {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	response, err := client.Get(ROOT_URL + "/buckets")
@@ -417,6 +561,7 @@ func getBuckets(ownerid int) []Bucket {
 	return filtered
 }
 
+// Get Line Item/Expense Entries from Server HTTP API
 func getLineItems(ownerid int) []LineItem {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	response, err := client.Get(ROOT_URL + "/lineitems")
@@ -440,6 +585,7 @@ func getLineItems(ownerid int) []LineItem {
 	return filtered
 }
 
+// Delete Bank Record via Server HTTP API
 func deleteBank(ownerid int, id int) bool {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	url := fmt.Sprintf("%s/bank/%d", ROOT_URL, id)
@@ -456,6 +602,7 @@ func deleteBank(ownerid int, id int) bool {
 	return true
 }
 
+// Delete Bucket Record via Server HTTP API
 func deleteBucket(ownerid int, id int) bool {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	url := fmt.Sprintf("%s/bucket/%d", ROOT_URL, id)
@@ -472,6 +619,7 @@ func deleteBucket(ownerid int, id int) bool {
 	return true
 }
 
+// Delete Line Item/Expense Entry via Server HTTP API
 func deleteLineItem(ownerid int, id int) bool {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	url := fmt.Sprintf("%s/lineitem/%d", ROOT_URL, id)
@@ -488,6 +636,23 @@ func deleteLineItem(ownerid int, id int) bool {
 	return true
 }
 
+// Create User Account via Server HTTP API
+func createUser(username string, name string, pin int) bool {
+	client := http.Client{Timeout: time.Duration(1) * time.Second}
+	body := fmt.Sprintf("{\"username\": \"%s\", \"name\": \"%s\", \"pin\": %d}", username, name, pin)
+	payload := bytes.NewBuffer([]byte(body))
+
+	response, err := client.Post(ROOT_URL+"/users", "application/json", payload)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	return response.StatusCode < 400
+}
+
+// Create Bank Account via Server HTTP API
 func createBank(name string, ownerid int) bool {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	body := fmt.Sprintf("{\"name\": \"%s\", \"ownerid\": %d}", name, ownerid)
@@ -502,6 +667,7 @@ func createBank(name string, ownerid int) bool {
 	return response.StatusCode < 400
 }
 
+// Create Bucket via Server HTTP API
 func createBucket(name string, ownerid int) bool {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	body := fmt.Sprintf("{\"name\": \"%s\", \"ownerid\": %d}", name, ownerid)
@@ -516,6 +682,7 @@ func createBucket(name string, ownerid int) bool {
 	return response.StatusCode < 400
 }
 
+// Create Line Item/Expense Entry via Server HTTP API
 func createLineItem(title string, description string, amount float64, bucket int, bank int, ownerid int) bool {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 
@@ -545,13 +712,19 @@ func createLineItem(title string, description string, amount float64, bucket int
 	return response.StatusCode < 400
 }
 
+// Update Bank Account via Server HTTP API
 func updateBank(id int, name string, ownerid int) bool {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	body := fmt.Sprintf("{\"name\": \"%s\", \"ownerid\": %d}", name, ownerid)
 	payload := bytes.NewBuffer([]byte(body))
 
-	response, err := client.Post(ROOT_URL+"/bank/"+fmt.Sprint(id), "application/json", payload)
+	request, err := http.NewRequest("PUT", ROOT_URL+"/bank/"+fmt.Sprint(id), payload)
 	if err != nil {
+		log.Fatal(err)
+	}
+
+	response, err2 := client.Do(request)
+	if err2 != nil {
 		log.Fatal(err)
 	}
 	defer response.Body.Close()
@@ -559,30 +732,42 @@ func updateBank(id int, name string, ownerid int) bool {
 	return response.StatusCode < 400
 }
 
+// Update Bucket via Server HTTP API
 func updateBucket(id int, name string, ownerid int) bool {
 	client := http.Client{Timeout: time.Duration(1) * time.Second}
 	body := fmt.Sprintf("{\"name\": \"%s\", \"ownerid\": %d}", name, ownerid)
 	payload := bytes.NewBuffer([]byte(body))
 
-	response, err := client.Post(ROOT_URL+"/bucket/"+fmt.Sprint(id), "application/json", payload)
+	request, err := http.NewRequest("PUT", ROOT_URL+"/bucket/"+fmt.Sprint(id), payload)
 	if err != nil {
 		log.Fatal(err)
 	}
+	response, err2 := client.Do(request)
+	if err2 != nil {
+		log.Fatal(err)
+	}
+
 	defer response.Body.Close()
 
 	return response.StatusCode < 400
 }
 
-func updateLineItem(id int, title string, description string, amount float64, bucket int, bank int, ownerid int) bool {
-	client := http.Client{Timeout: time.Duration(1) * time.Second}
-	body := fmt.Sprintf("{\"title\": \"%s\", \"description\": \"%s\", \"amount\": %f, \"bucket\": \"%d\", \"bank\": \"%d\", \"ownerid\": \"%d\"}", title, description, amount, bucket, bank, ownerid)
-	payload := bytes.NewBuffer([]byte(body))
+// Update Line Item/Expense Item via Server HTTP API
+// func updateLineItem(id int, title string, description string, amount float64, bucket int, bank int, ownerid int) bool {
+// 	client := http.Client{Timeout: time.Duration(1) * time.Second}
+// 	body := fmt.Sprintf("{\"title\": \"%s\", \"description\": \"%s\", \"amount\": %f, \"bucket\": \"%d\", \"bank\": \"%d\", \"ownerid\": \"%d\"}", title, description, amount, bucket, bank, ownerid)
+// 	payload := bytes.NewBuffer([]byte(body))
 
-	response, err := client.Post(ROOT_URL+"/lineitem/"+fmt.Sprint(id), "application/json", payload)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer response.Body.Close()
+// 	request, err := http.NewRequest("PUT", ROOT_URL+"/lineitem/"+fmt.Sprint(id), payload)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// 	response, err2 := client.Do(request)
+// 	if err2 != nil {
+// 		log.Fatal(err)
+// 	}
 
-	return response.StatusCode < 400
-}
+// 	defer response.Body.Close()
+
+// 	return response.StatusCode < 400
+// }
