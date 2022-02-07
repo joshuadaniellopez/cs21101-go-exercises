@@ -13,6 +13,19 @@ services:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data/
+    restart: on-failure
+  server:
+    container_name: golangproject_server
+    build: ./server/
+    ports:
+      - "9000:9000"
+    environment:
+      pg_host: "golangproject_postgres"
+    depends_on:
+      - db
+    links:
+      - db
+    restart: on-failure
 
 volumes:
   pg_data:
