@@ -47,7 +47,7 @@ const (
 )
 
 func db_init() *sql.DB {
-	conn := fmt.Sprintf("user=%s password=%s dbname=%s sslmode=disable", DB_USER, DB_PASSWORD, DB_NAME)
+	conn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "db", 5432, DB_USER, DB_PASSWORD, DB_NAME)
 	db, err := sql.Open("postgres", conn)
 
 	if err != nil {
@@ -768,6 +768,11 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 				Name:     name,
 				Pin:      pin,
 			})
+		}
+
+		if len(users) == 0 {
+			http.Error(w, "Not Found", http.StatusNotFound)
+			return
 		}
 
 		if err := json.NewEncoder(w).Encode(users[0]); err != nil {
