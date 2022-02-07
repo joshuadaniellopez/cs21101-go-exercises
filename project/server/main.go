@@ -46,6 +46,12 @@ const (
 	DB_NAME     = "goproject"
 )
 
+var (
+	WarningLogger *log.Logger
+	InfoLogger    *log.Logger
+	ErrorLogger   *log.Logger
+)
+
 func db_init() *sql.DB {
 	conn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", "db", 5432, DB_USER, DB_PASSWORD, DB_NAME)
 	db, err := sql.Open("postgres", conn)
@@ -59,17 +65,30 @@ func db_init() *sql.DB {
 	return db
 }
 
+func init() {
+	file, err := os.OpenFile("logs.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	InfoLogger = log.New(file, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	WarningLogger = log.New(file, "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
+	ErrorLogger = log.New(file, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
 func main() {
+	InfoLogger.Println("Starting the application...")
 	http.ListenAndServe(":9000", handler())
 }
 
 func checkError(err error) {
 	if err != nil {
-		log.Fatal(err)
+		ErrorLogger.Println("Internal Error Occured. " + err.Error())
 	}
 }
 
 func handler() http.HandlerFunc {
+	InfoLogger.Println("Handler Listening at :9000 ...")
 	return func(w http.ResponseWriter, r *http.Request) {
 		var id int
 		if r.URL.Path == "/users" {
@@ -116,16 +135,20 @@ func userProcess(w http.ResponseWriter, r *http.Request) {
 			user.Pin,
 		).Scan(&newUserId)
 
+		InfoLogger.Println("New User Created.")
+
 		//checkError(err)
 		if err != nil {
 			res := strings.Contains(string(err.Error()), "duplicate key value violates unique constraint")
 
 			if res {
 				http.Error(w, "Username already in use.", http.StatusForbidden)
+				ErrorLogger.Println("Failed to create new user. Username in use.")
 				return
 			}
 
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 
@@ -133,6 +156,7 @@ func userProcess(w http.ResponseWriter, r *http.Request) {
 
 		if err := json.NewEncoder(w).Encode(user); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 
@@ -159,16 +183,20 @@ func userProcess(w http.ResponseWriter, r *http.Request) {
 				Pin:      pin,
 			})
 		}
+		InfoLogger.Println("Retrieved User Account List.")
 		if err := json.NewEncoder(w).Encode(users); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 
 	case "PUT":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring request...")
 		return
 	case "DELETE":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring request...")
 		return
 	}
 }
@@ -199,17 +227,21 @@ func userProcessId(id int, w http.ResponseWriter, r *http.Request) {
 				Pin:      pin,
 			})
 		}
+		InfoLogger.Println("Retrieved Information on specific user.")
 		if users == nil || len(users) < 1 {
 			http.Error(w, "Not Found!", http.StatusNotFound)
+			ErrorLogger.Println("User requested not found.")
 			return
 		}
 
 		if err := json.NewEncoder(w).Encode(users); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "POST":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring request...")
 		return
 	case "PUT":
 		db := db_init()
@@ -218,6 +250,7 @@ func userProcessId(id int, w http.ResponseWriter, r *http.Request) {
 		var user UserAccount
 		if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 
@@ -233,9 +266,11 @@ func userProcessId(id int, w http.ResponseWriter, r *http.Request) {
 		user.Id = id
 
 		checkError(err)
+		InfoLogger.Println("Updated Information of a specific user.")
 
 		if err := json.NewEncoder(w).Encode(user); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "DELETE":
@@ -252,11 +287,14 @@ func userProcessId(id int, w http.ResponseWriter, r *http.Request) {
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
+		InfoLogger.Println("User deleted from system.")
 
 		if err := json.NewEncoder(w).Encode(user); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	}
@@ -272,6 +310,7 @@ func bankProcess(w http.ResponseWriter, r *http.Request) {
 		var bank BankAccount
 		if err := json.NewDecoder(r.Body).Decode(&bank); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 
@@ -283,11 +322,13 @@ func bankProcess(w http.ResponseWriter, r *http.Request) {
 		).Scan(&newBankId)
 
 		checkError(err)
+		InfoLogger.Println("New Bank Created.")
 
 		bank.Id = newBankId
 
 		if err := json.NewEncoder(w).Encode(bank); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "GET":
@@ -312,15 +353,19 @@ func bankProcess(w http.ResponseWriter, r *http.Request) {
 				Owner: owner,
 			})
 		}
+		InfoLogger.Println("Bank Information Retrieved.")
 		if err := json.NewEncoder(w).Encode(accounts); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "PUT":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring Request.")
 		return
 	case "DELETE":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring Request.")
 		return
 	}
 }
@@ -350,17 +395,21 @@ func bankProcessId(id int, w http.ResponseWriter, r *http.Request) {
 				Owner: ownerid,
 			})
 		}
+		InfoLogger.Println("Bank Information Retrieved.")
 		if banks == nil || len(banks) < 1 {
 			http.Error(w, "Not Found!", http.StatusNotFound)
+			ErrorLogger.Println("Bank Information Empty/Not Found.")
 			return
 		}
 
 		if err := json.NewEncoder(w).Encode(banks); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "POST":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring Request.")
 		return
 	case "PUT":
 		db := db_init()
@@ -382,9 +431,11 @@ func bankProcessId(id int, w http.ResponseWriter, r *http.Request) {
 		checkError(err)
 
 		bank.Id = id
+		InfoLogger.Println("Bank Information Updated.")
 
 		if err := json.NewEncoder(w).Encode(bank); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "DELETE":
@@ -400,11 +451,14 @@ func bankProcessId(id int, w http.ResponseWriter, r *http.Request) {
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
+		InfoLogger.Println("Bank Information Deleted.")
 
 		if err := json.NewEncoder(w).Encode(bank); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	}
@@ -420,6 +474,7 @@ func bucketProcess(w http.ResponseWriter, r *http.Request) {
 		var bucket Bucket
 		if err := json.NewDecoder(r.Body).Decode(&bucket); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 
@@ -431,11 +486,13 @@ func bucketProcess(w http.ResponseWriter, r *http.Request) {
 		).Scan(&newBucketId)
 
 		checkError(err)
+		InfoLogger.Println("New Bucket Created.")
 
 		bucket.Id = newBucketId
 
 		if err := json.NewEncoder(w).Encode(bucket); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "GET":
@@ -460,15 +517,19 @@ func bucketProcess(w http.ResponseWriter, r *http.Request) {
 				Owner: owner,
 			})
 		}
+		InfoLogger.Println("Bucket Information retrieved.")
 		if err := json.NewEncoder(w).Encode(buckets); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "PUT":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring Request.")
 		return
 	case "DELETE":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring Request.")
 		return
 	}
 }
@@ -498,18 +559,22 @@ func bucketProcessId(id int, w http.ResponseWriter, r *http.Request) {
 				Owner: ownerid,
 			})
 		}
+		InfoLogger.Println("Bucket Information retrieved.")
 
 		if buckets == nil || len(buckets) < 1 {
 			http.Error(w, "Not Found!", http.StatusNotFound)
+			ErrorLogger.Println("Bucket Information Empty/Not Found.")
 			return
 		}
 
 		if err := json.NewEncoder(w).Encode(buckets); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "POST":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring Request.")
 		return
 	case "PUT":
 		db := db_init()
@@ -529,11 +594,12 @@ func bucketProcessId(id int, w http.ResponseWriter, r *http.Request) {
 		).Scan(&updatedId)
 
 		checkError(err)
-
+		InfoLogger.Println("Bucket Information Updated.")
 		bucket.Id = id
 
 		if err := json.NewEncoder(w).Encode(bucket); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "DELETE":
@@ -546,14 +612,15 @@ func bucketProcessId(id int, w http.ResponseWriter, r *http.Request) {
 			&bucket.Name,
 			&bucket.Owner,
 		)
-
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
-
+		InfoLogger.Println("Bucket Information deleted.")
 		if err := json.NewEncoder(w).Encode(bucket); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	}
@@ -584,11 +651,13 @@ func lineitemProcess(w http.ResponseWriter, r *http.Request) {
 		).Scan(&newLineItemId)
 
 		checkError(err)
+		InfoLogger.Println("New Line Item Entry created.")
 
 		lineitem.Id = newLineItemId
 
 		if err := json.NewEncoder(w).Encode(lineitem); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 
@@ -619,16 +688,20 @@ func lineitemProcess(w http.ResponseWriter, r *http.Request) {
 				Owner:       ownerid,
 			})
 		}
+		InfoLogger.Println("Line Item Entries retrieved.")
 
 		if err := json.NewEncoder(w).Encode(lineitems); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "PUT":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring Request.")
 		return
 	case "DELETE":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring Request.")
 		return
 	}
 }
@@ -666,15 +739,20 @@ func lineitemProcessId(id int, w http.ResponseWriter, r *http.Request) {
 
 		if lineitems == nil || len(lineitems) < 1 {
 			http.Error(w, "Not Found!", http.StatusNotFound)
+			ErrorLogger.Println("Line Item Information Empty/Not Found.")
 			return
 		}
 
+		InfoLogger.Println("Line Item Entry Information retrieved.")
+
 		if err := json.NewEncoder(w).Encode(lineitems); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "POST":
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring Request.")
 		return
 	case "PUT":
 		db := db_init()
@@ -698,10 +776,13 @@ func lineitemProcessId(id int, w http.ResponseWriter, r *http.Request) {
 		).Scan(&updatedId)
 
 		checkError(err)
+		InfoLogger.Println("Line Item Entry Information Updated.")
+
 		lineitem.Id = id
 
 		if err := json.NewEncoder(w).Encode(lineitem); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	case "DELETE":
@@ -721,11 +802,14 @@ func lineitemProcessId(id int, w http.ResponseWriter, r *http.Request) {
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
+		InfoLogger.Println("Line Item Entry Information deleted.")
 
 		if err := json.NewEncoder(w).Encode(lineitem); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	}
@@ -748,6 +832,7 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 
 		if err := json.NewDecoder(r.Body).Decode(&login); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 		var users []UserAccount
@@ -769,18 +854,22 @@ func authorize(w http.ResponseWriter, r *http.Request) {
 				Pin:      pin,
 			})
 		}
+		InfoLogger.Println("Authorization request received.")
 
 		if len(users) == 0 {
 			http.Error(w, "Not Found", http.StatusNotFound)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 
 		if err := json.NewEncoder(w).Encode(users[0]); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			ErrorLogger.Println("Internal Error Occured. " + err.Error())
 			return
 		}
 	default:
 		http.Error(w, "Not allowed!", http.StatusMethodNotAllowed)
+		WarningLogger.Println("Invalid Operation Requested. Ignoring request...")
 		return
 	}
 }
