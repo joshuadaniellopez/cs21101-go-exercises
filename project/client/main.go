@@ -67,7 +67,7 @@ func main() {
 				name = scanner.Text()
 			}
 
-			fmt.Print("What's your desired name: ")
+			fmt.Print("What's your desired username: ")
 			if scanner.Scan() {
 				username = scanner.Text()
 			}
@@ -331,10 +331,10 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 			success := false
 			success = createLineItem(title, description, amount, bucket, bank, id)
 			if success {
-				fmt.Println("Bucket created!")
-				fmt.Println("[Bucket Id, Bucket Name, Bucket Owner Id]")
-				fmt.Println("Your Buckets: ")
-				fmt.Println(getBuckets(id))
+				fmt.Println("Line Item created!")
+				fmt.Println("[Line Item Id, Title, Description, Amount, Bucket, Bank, Owner Id]")
+				fmt.Println("Your Line Items: ")
+				fmt.Println(getLineItems(id))
 			} else {
 				fmt.Println("Unexpected error occured. Try again!")
 			}
@@ -367,13 +367,17 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 			fmt.Print("Enter the Bank Id for update: ")
 			fmt.Scan(&bankId)
 
+			found := false 
 			for _, val := range *banks {
 				if val.Id == bankId {
 					bank = val
+					found = true
 					break
-				} else {
-					fmt.Println("Invalid ID. Try again.")
 				}
+			}
+			if !found {
+				fmt.Println("Invalid ID. Returning to main menu.")
+				return
 			}
 
 			var bankName string
@@ -411,13 +415,17 @@ func process(id int, banks *[]BankAccount, buckets *[]Bucket, lineitems *[]LineI
 			fmt.Print("Enter the Bucket Id for update: ")
 			fmt.Scan(&bucketId)
 
+			found := false 
 			for _, val := range *buckets {
 				if val.Id == bucketId {
 					bucket = val
+					found = true
 					break
-				} else {
-					fmt.Println("Invalid ID. Try again.")
 				}
+			}
+			if !found {
+				fmt.Println("Invalid ID. Returning to main menu.")
+				return
 			}
 
 			var bucketName string
@@ -699,11 +707,9 @@ func createLineItem(title string, description string, amount float64, bucket int
 		body += fmt.Sprintf("\"bank\": %d,", bank)
 	}
 	body = "{" + body + fmt.Sprintf("\"ownerid\": %d}", ownerid)
-	fmt.Println(body)
 	payload := bytes.NewBuffer([]byte(body))
 
 	response, err := client.Post(ROOT_URL+"/lineitems", "application/json", payload)
-	fmt.Println(response)
 	if err != nil {
 		log.Fatal(err)
 	}
